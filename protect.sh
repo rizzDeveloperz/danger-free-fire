@@ -1736,57 +1736,6 @@ echo "📂 Lokasi file: $REMOTE_PATH"
 ###########
 #!/bin/bash
 
-REMOTE_PATH="/var/www/pterodactyl/app/Http/Controllers/Api/Application/Servers/ServerController.php"
-TIMESTAMP=$(date -u +"%Y-%m-%d-%H-%M-%S")
-BACKUP_PATH="${REMOTE_PATH}.bak_${TIMESTAMP}"
-
-echo "🚀 Memasang proteksi ANTI edit nama server (API)..."
-
-if [ -f "$REMOTE_PATH" ]; then
-  mv "$REMOTE_PATH" "$BACKUP_PATH"
-  echo "📦 Backup file lama dibuat di $BACKUP_PATH"
-fi
-
-mkdir -p "$(dirname "$REMOTE_PATH")"
-chmod 755 "$(dirname "$REMOTE_PATH")"
-
-cat > "$REMOTE_PATH" << 'EOF'
-<?php
-
-namespace Pterodactyl\Http\Controllers\Api\Application\Servers;
-
-use Illuminate\Http\JsonResponse;
-use Pterodactyl\Models\Server;
-use Pterodactyl\Http\Controllers\Api\Application\ApplicationApiController;
-use Pterodactyl\Services\Servers\DetailsModificationService;
-use Pterodactyl\Http\Requests\Api\Application\Servers\UpdateServerRequest;
-
-class ServerController extends ApplicationApiController
-{
-    public function __construct(
-        private DetailsModificationService $modificationService
-    ) {
-        parent::__construct();
-    }
-
-    public function update(UpdateServerRequest $request, Server $server): JsonResponse
-    {
-        $data = $request->validated();
-        unset($data['name']);
-
-        $server = $this->modificationService->handle($server, $data);
-
-        return $this->response->item($server, $this->transformer);
-    }
-}
-EOF
-
-chmod 644 "$REMOTE_PATH"
-
-echo "✅ Proteksi Anti edit nama server (API) aktif"
-###########
-#!/bin/bash
-
 REMOTE_PATH="/var/www/pterodactyl/app/Services/Servers/DetailsModificationService.php"
 TIMESTAMP=$(date -u +"%Y-%m-%d-%H-%M-%S")
 BACKUP_PATH="${REMOTE_PATH}.bak_${TIMESTAMP}"
