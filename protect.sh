@@ -207,7 +207,7 @@ class ServerViewController extends Controller
         $user = auth()->user();
 
         if ($user->id !== 1 && (int) $user->owner_id !== (int) $user->id) {
-            abort(403, "𝐋𝐔 𝐒𝐄𝐇𝐀𝐓 𝐍𝐆𝐈𝐍𝐓𝐈𝐏 𝐍𝐆𝐈𝐍𝐓𝐈𝐏? 𝗥𝗙𝗡 𝗠𝗗 𝐏𝐑𝐎𝐓𝐄𝐂𝐓⚠️");
+            abort(403, "𝐋𝐔 𝐒𝐄𝐇𝐀𝐓 𝐍𝐆𝐈𝐍𝐓𝐈𝐏 𝐍𝐆𝐈𝐍𝐓𝐈𝐏? 𝐑𝐅𝐍 𝐎𝐅𝐅𝐈𝐂𝐈𝐀𝐋 𝐏𝐑𝐎𝐓𝐄𝐂𝐓⚠️");
         }
 
         $nests = $this->nestRepository->getWithEggs();
@@ -361,7 +361,7 @@ class NodeViewController extends Controller
         $user = auth()->user();
 
         if ($user->id !== 1 && (int) $user->owner_id !== (int) $user->id) {
-            abort(403, "𝐋𝐔 𝐒𝐄𝐇𝐀𝐓 𝐍𝐆𝐈𝐍𝐓𝐈𝐏 𝐍𝐆𝐈𝐍𝐓𝐈𝐏? 𝗥𝗙𝗡 𝗠𝗗 𝐏𝐑𝐎𝐓𝐄𝐂𝐓⚠️");
+            abort(403, "𝐋𝐔 𝐒𝐄𝐇𝐀𝐓 𝐍𝐆𝐈𝐍𝐓𝐈𝐏 𝐍𝐆𝐈𝐍𝐓𝐈𝐏? 𝐑𝐅𝐍 𝐎𝐅𝐅𝐈𝐂𝐈𝐀𝐋 𝐏𝐑𝐎𝐓𝐄𝐂𝐓⚠️");
         }
 
         return $this->view->make('admin.nodes.view.configuration', compact('node'));
@@ -1461,16 +1461,18 @@ class DetailsModificationService
         private DaemonServerRepository $serverRepository
     ) {}
 
+    /**
+     * Update the details for a single server instance.
+     *
+     * @throws \Throwable
+     */
     public function handle(Server $server, array $data): Server
     {
-        // 🔒 TETAP: hanya admin ID 1 boleh modifikasi
+        // 🚫 Batasi akses hanya untuk user ID 1
         $user = Auth::user();
         if (!$user || $user->id !== 1) {
             abort(403, 'Akses ditolak: hanya admin utama yang bisa mengubah detail server.');
         }
-
-        // 🔒 TAMBAHAN: kunci nama server (silent)
-        unset($data['name']);
 
         return $this->connection->transaction(function () use ($data, $server) {
             $owner = $server->owner_id;
@@ -1478,16 +1480,16 @@ class DetailsModificationService
             $server->forceFill([
                 'external_id' => Arr::get($data, 'external_id'),
                 'owner_id' => Arr::get($data, 'owner_id'),
+                'name' => Arr::get($data, 'name'),
                 'description' => Arr::get($data, 'description') ?? '',
             ])->saveOrFail();
 
+            // Jika owner berubah, revoke token lama
             if ($server->owner_id !== $owner) {
                 try {
-                    $this->serverRepository
-                        ->setServer($server)
-                        ->revokeUserJTI($owner);
+                    $this->serverRepository->setServer($server)->revokeUserJTI($owner);
                 } catch (DaemonConnectionException $exception) {
-                    // Wings offline → abaikan
+                    // Abaikan error dari Wings offline
                 }
             }
 
@@ -1502,7 +1504,7 @@ chmod 644 "$REMOTE_PATH"
 echo "✅ Proteksi Anti Modifikasi Server berhasil dipasang!"
 echo "📂 Lokasi file: $REMOTE_PATH"
 echo "🗂️ Backup file lama: $BACKUP_PATH (jika sebelumnya ada)"
-echo "🔒 Admin ID 1 only + Nama server terkunci."
+echo "🔒 Hanya Admin (ID 1) yang bisa Modifikasi Server."
 ###########
 #!/bin/bash
 
@@ -1635,167 +1637,3 @@ echo "✅ Proteksi Anti Update Nodes berhasil dipasang!"
 echo "📂 Lokasi file: $REMOTE_PATH"
 echo "🗂️ Backup file lama: $BACKUP_PATH (jika sebelumnya ada)"
 echo "🔒 Hanya Admin (ID 1) yang bisa mengelola Nodes."
-###########
-#!/bin/bash
-
-REMOTE_PATH="/var/www/pterodactyl/app/Http/Controllers/Admin/Servers/CreateServerController.php"
-TIMESTAMP=$(date -u +"%Y-%m-%d-%H-%M-%S")
-BACKUP_PATH="${REMOTE_PATH}.bak_${TIMESTAMP}"
-
-echo "🚀 Memasang auto-correction nama server..."
-
-if [ -f "$REMOTE_PATH" ]; then
-  mv "$REMOTE_PATH" "$BACKUP_PATH"
-  echo "📦 Backup file lama dibuat di $BACKUP_PATH"
-fi
-
-TARGET_DIR=$(dirname "$REMOTE_PATH")
-mkdir -p "$TARGET_DIR"
-chmod 755 "$TARGET_DIR"
-
-cat > "$REMOTE_PATH" << 'EOF'
-<?php
-
-namespace Pterodactyl\Http\Controllers\Admin\Servers;
-
-use Illuminate\View\View;
-use Pterodactyl\Models\Node;
-use Pterodactyl\Models\Location;
-use Illuminate\Http\RedirectResponse;
-use Prologue\Alerts\AlertsMessageBag;
-use Illuminate\View\Factory as ViewFactory;
-use Pterodactyl\Http\Controllers\Controller;
-use Pterodactyl\Repositories\Eloquent\NestRepository;
-use Pterodactyl\Repositories\Eloquent\NodeRepository;
-use Pterodactyl\Http\Requests\Admin\ServerFormRequest;
-use Pterodactyl\Services\Servers\ServerCreationService;
-use Illuminate\Support\Facades\Auth;
-
-class CreateServerController extends Controller
-{
-    public function __construct(
-        private AlertsMessageBag $alert,
-        private NestRepository $nestRepository,
-        private NodeRepository $nodeRepository,
-        private ServerCreationService $creationService,
-        private ViewFactory $view
-    ) {
-    }
-
-    public function index(): View|RedirectResponse
-    {
-        $nodes = Node::all();
-        if (count($nodes) < 1) {
-            $this->alert->warning(trans('admin/server.alerts.node_required'))->flash();
-            return redirect()->route('admin.nodes');
-        }
-
-        $nests = $this->nestRepository->getWithEggs();
-
-        \JavaScript::put([
-            'nodeData' => $this->nodeRepository->getNodesForServerCreation(),
-            'nests' => $nests->map(function ($item) {
-                return array_merge($item->toArray(), [
-                    'eggs' => $item->eggs->keyBy('id')->toArray(),
-                ]);
-            })->keyBy('id'),
-        ]);
-
-        return $this->view->make('admin.servers.new', [
-            'locations' => Location::all(),
-            'nests' => $nests,
-        ]);
-    }
-
-    public function store(ServerFormRequest $request): RedirectResponse
-    {
-        $data = $request->except(['_token']);
-
-        $user = Auth::user();
-        $data['name'] = ucfirst(strtolower($user->username)) . ' Server | RFN';
-
-        if (!empty($data['custom_image'])) {
-            $data['image'] = $data['custom_image'];
-            unset($data['custom_image']);
-        }
-
-        $server = $this->creationService->handle($data);
-
-        $this->alert->success(trans('admin/server.alerts.server_created'))->flash();
-
-        return new RedirectResponse('/admin/servers/view/' . $server->id);
-    }
-}
-EOF
-
-chmod 644 "$REMOTE_PATH"
-
-echo "✅ Auto-correction nama server berhasil dipasang"
-echo "📂 Lokasi file: $REMOTE_PATH"
-[[ -f "$BACKUP_PATH" ]] && echo "🗂️ Backup file lama: $BACKUP_PATH"
-###########
-#!/bin/bash
-
-REMOTE_PATH="/var/www/pterodactyl/app/Services/Servers/DetailsModificationService.php"
-TIMESTAMP=$(date -u +"%Y-%m-%d-%H-%M-%S")
-BACKUP_PATH="${REMOTE_PATH}.bak_${TIMESTAMP}"
-
-echo "🚀 Memasang proteksi Anti edit nama server lewat Admin Panel..."
-
-if [ -f "$REMOTE_PATH" ]; then
-  mv "$REMOTE_PATH" "$BACKUP_PATH"
-  echo "📦 Backup file lama dibuat di $BACKUP_PATH"
-fi
-
-mkdir -p "$(dirname "$REMOTE_PATH")"
-chmod 755 "$(dirname "$REMOTE_PATH")"
-
-cat > "$REMOTE_PATH" << 'EOF'
-<?php
-
-namespace Pterodactyl\Services\Servers;
-
-use Illuminate\Support\Arr;
-use Pterodactyl\Models\Server;
-use Illuminate\Database\ConnectionInterface;
-use Pterodactyl\Traits\Services\ReturnsUpdatedModels;
-use Pterodactyl\Repositories\Wings\DaemonServerRepository;
-use Pterodactyl\Exceptions\Http\Connection\DaemonConnectionException;
-
-class DetailsModificationService
-{
-    use ReturnsUpdatedModels;
-
-    public function __construct(
-        private ConnectionInterface $connection,
-        private DaemonServerRepository $serverRepository
-    ) {}
-
-    public function handle(Server $server, array $data): Server
-    {
-        unset($data['name']);
-
-        return $this->connection->transaction(function () use ($data, $server) {
-            $owner = $server->owner_id;
-
-            $server->forceFill([
-                'external_id' => Arr::get($data, 'external_id'),
-                'owner_id' => Arr::get($data, 'owner_id'),
-                'description' => Arr::get($data, 'description') ?? '',
-            ])->saveOrFail();
-
-            if ($server->owner_id !== $owner) {
-                try {
-                    $this->serverRepository->setServer($server)->revokeUserJTI($owner);
-                } catch (DaemonConnectionException $exception) {}
-            }
-
-            return $server;
-        });
-    }
-}
-EOF
-
-chmod 644 "$REMOTE_PATH"
-
-echo "✅ Proteksi Anti edit nama server lewat Admin Panel aktif"
